@@ -6,7 +6,7 @@
 
 *Find out in one line. No proxy. No signup. No traffic rerouting.*
 
-[![PyPI version](https://badge.fury.io/py/tokenspy.svg)](https://badge.fury.io/py/tokenspy)
+[![PyPI version](https://img.shields.io/pypi/v/tokenspy.svg)](https://pypi.org/project/tokenspy/)
 [![Tests](https://github.com/pinakimishra95/tokenspy/actions/workflows/tests.yml/badge.svg)](https://github.com/pinakimishra95/tokenspy/actions)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
