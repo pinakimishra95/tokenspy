@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokenspy"
-version = "0.1.0"
+version = "0.1.1"
 description = "cProfile for LLMs — find which function is burning your AI budget. Flame graph output, zero-config, no proxy."
 readme = "README.md"
 license = { text = "MIT" }
