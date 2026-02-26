@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tokenspy"
-version = "0.1.1"
+version = "0.1.2"
 description = "cProfile for LLMs — find which function is burning your AI budget. Flame graph output, zero-config, no proxy."
 readme = "README.md"
 license = { text = "MIT" }
@@ -32,9 +32,11 @@ dependencies = []
 openai = ["openai>=1.30.0"]
 anthropic = ["anthropic>=0.30.0"]
 google = ["google-generativeai>=0.7.0"]
+langchain = ["langchain-core>=0.2.0"]
 all = [
     "openai>=1.30.0",
     "anthropic>=0.30.0",
+    "langchain-core>=0.2.0",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -42,6 +44,9 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
 ]
+
+[project.scripts]
+tokenspy = "tokenspy.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/pinakimishra95/tokenspy"

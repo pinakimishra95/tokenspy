@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,8 +28,9 @@ class CallRecord:
     duration_ms: float
     timestamp: float = field(default_factory=time.time)
     # Optional metadata
-    provider: str = "unknown"   # "anthropic" | "openai" | "google"
+    provider: str = "unknown"   # "anthropic" | "openai" | "google" | "langchain"
     session_id: str | None = None
+    git_commit: str | None = None  # populated when track_git=True
 
     @property
     def total_tokens(self) -> int:
@@ -49,16 +51,29 @@ class Tracker:
         self._records: list[CallRecord] = []
         self._lock = threading.Lock()
         self._persist_path = persist_path
+        self._post_record_hooks: list[Callable[[CallRecord], None]] = []
+        self._git_commit: str | None = None  # set by init(track_git=True)
         if persist_path:
             self._init_db(persist_path)
 
     # ── Recording ─────────────────────────────────────────────────────────────
 
     def record(self, rec: CallRecord) -> None:
+        # Stamp git commit if tracking is enabled
+        if self._git_commit and rec.git_commit is None:
+            rec.git_commit = self._git_commit
         with self._lock:
             self._records.append(rec)
         if self._persist_path:
             self._save_to_db(rec)
+        # Call hooks outside the lock to avoid deadlocks.
+        # BaseException subclasses (e.g. BudgetExceededError) propagate freely;
+        # ordinary Exception subclasses from misbehaving hooks are suppressed.
+        for hook in list(self._post_record_hooks):
+            try:
+                hook(rec)
+            except Exception:
+                pass  # suppress unexpected hook errors, but not BaseException
 
     def records(self) -> list[CallRecord]:
         with self._lock:
@@ -140,6 +155,11 @@ class Tracker:
                 session_id TEXT
             )
         """)
+        # Migrate: add git_commit column if it doesn't exist yet
+        try:
+            conn.execute("ALTER TABLE llm_calls ADD COLUMN git_commit TEXT")
+        except Exception:
+            pass  # column already exists
         conn.commit()
         conn.close()
 
@@ -153,8 +173,8 @@ class Tracker:
                 INSERT INTO llm_calls
                     (function_name, call_stack, model, provider,
                      input_tokens, output_tokens, cost_usd, duration_ms,
-                     timestamp, session_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     timestamp, session_id, git_commit)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.function_name,
@@ -167,6 +187,7 @@ class Tracker:
                     rec.duration_ms,
                     rec.timestamp,
                     rec.session_id,
+                    rec.git_commit,
                 ),
             )
             conn.commit()
@@ -185,7 +206,7 @@ class Tracker:
             rows = conn.execute(
                 "SELECT function_name, call_stack, model, provider, "
                 "input_tokens, output_tokens, cost_usd, duration_ms, "
-                "timestamp, session_id FROM llm_calls ORDER BY timestamp"
+                "timestamp, session_id, git_commit FROM llm_calls ORDER BY timestamp"
             ).fetchall()
             conn.close()
         except Exception:
@@ -206,6 +227,7 @@ class Tracker:
                         duration_ms=row[7],
                         timestamp=row[8],
                         session_id=row[9],
+                        git_commit=row[10] if len(row) > 10 else None,
                     )
                 )
             except Exception:

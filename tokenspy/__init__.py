@@ -15,15 +15,23 @@ Usage::
     run_agent("Summarize this")
     tokenspy.report()
 
+    # Budget alerts
+    @tokenspy.profile(budget_usd=0.10)
+    def expensive_agent(): ...
+
     # Context manager
     with tokenspy.session() as s:
         response = anthropic_client.messages.create(...)
     print(s.cost_str)   # "$0.003"
+
+    # LangChain integration
+    from tokenspy.integrations.langchain import TokenspyCallbackHandler
+    chain.invoke(prompt, config={"callbacks": [TokenspyCallbackHandler()]})
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     "profile",
     "session",
@@ -32,12 +40,13 @@ __all__ = [
     "reset",
     "init",
     "Session",
+    "BudgetExceededError",
 ]
 
 from pathlib import Path
 from typing import Any
 
-from tokenspy.profiler import Session, init, profile, session
+from tokenspy.profiler import BudgetExceededError, Session, init, profile, session
 from tokenspy.tracker import get_global_tracker
 
 
