@@ -56,6 +56,11 @@ class Tracker:
         if persist_path:
             self._init_db(persist_path)
 
+    @property
+    def db_path(self) -> Path | None:
+        """Path to the SQLite database, or None if persistence is disabled."""
+        return self._persist_path
+
     # ── Recording ─────────────────────────────────────────────────────────────
 
     def record(self, rec: CallRecord) -> None:
@@ -64,8 +69,25 @@ class Tracker:
             rec.git_commit = self._git_commit
         with self._lock:
             self._records.append(rec)
+            llm_call_id: int | None = None
         if self._persist_path:
-            self._save_to_db(rec)
+            llm_call_id = self._save_to_db(rec)
+        # Auto-link to active span in the tracing module (if any)
+        try:
+            from tokenspy.tracing import get_current_span_id, update_span_llm_data
+            span_id = get_current_span_id()
+            if span_id:
+                update_span_llm_data(
+                    span_id=span_id,
+                    model=rec.model,
+                    input_tokens=rec.input_tokens,
+                    output_tokens=rec.output_tokens,
+                    cost_usd=rec.cost_usd,
+                    duration_ms=rec.duration_ms,
+                    llm_call_id=llm_call_id,
+                )
+        except Exception:
+            pass  # tracing not configured — silently skip
         # Call hooks outside the lock to avoid deadlocks.
         # BaseException subclasses (e.g. BudgetExceededError) propagate freely;
         # ordinary Exception subclasses from misbehaving hooks are suppressed.
@@ -161,14 +183,114 @@ class Tracker:
         except Exception:
             pass  # column already exists
         conn.commit()
+        self._init_new_tables(conn)
         conn.close()
 
-    def _save_to_db(self, rec: CallRecord) -> None:
+    def _init_new_tables(self, conn: sqlite3.Connection) -> None:
+        """Create v0.2.0 tables for tracing, evaluations, and prompts."""
+        stmts = [
+            """CREATE TABLE IF NOT EXISTS traces (
+                id          TEXT PRIMARY KEY,
+                name        TEXT,
+                start_time  REAL,
+                end_time    REAL,
+                input       TEXT,
+                output      TEXT,
+                metadata    TEXT,
+                tags        TEXT,
+                user_id     TEXT,
+                session_id  TEXT,
+                git_commit  TEXT,
+                error       TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS spans (
+                id             TEXT PRIMARY KEY,
+                trace_id       TEXT REFERENCES traces(id),
+                parent_span_id TEXT,
+                name           TEXT,
+                span_type      TEXT,
+                start_time     REAL,
+                end_time       REAL,
+                input          TEXT,
+                output         TEXT,
+                metadata       TEXT,
+                model          TEXT,
+                input_tokens   INTEGER,
+                output_tokens  INTEGER,
+                cost_usd       REAL,
+                duration_ms    REAL,
+                llm_call_id    INTEGER,
+                status         TEXT DEFAULT 'ok'
+            )""",
+            """CREATE TABLE IF NOT EXISTS scores (
+                id         TEXT PRIMARY KEY,
+                trace_id   TEXT REFERENCES traces(id),
+                span_id    TEXT,
+                name       TEXT,
+                value      REAL,
+                comment    TEXT,
+                scorer     TEXT,
+                created_at REAL
+            )""",
+            """CREATE TABLE IF NOT EXISTS datasets (
+                id          TEXT PRIMARY KEY,
+                name        TEXT UNIQUE,
+                description TEXT,
+                created_at  REAL
+            )""",
+            """CREATE TABLE IF NOT EXISTS dataset_items (
+                id              TEXT PRIMARY KEY,
+                dataset_id      TEXT REFERENCES datasets(id),
+                input           TEXT,
+                expected_output TEXT,
+                metadata        TEXT,
+                created_at      REAL
+            )""",
+            """CREATE TABLE IF NOT EXISTS experiments (
+                id            TEXT PRIMARY KEY,
+                name          TEXT,
+                dataset_id    TEXT REFERENCES datasets(id),
+                function_name TEXT,
+                created_at    REAL,
+                git_commit    TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS experiment_results (
+                id               TEXT PRIMARY KEY,
+                experiment_id    TEXT REFERENCES experiments(id),
+                dataset_item_id  TEXT REFERENCES dataset_items(id),
+                output           TEXT,
+                scores           TEXT,
+                passed           INTEGER,
+                error            TEXT,
+                cost_usd         REAL,
+                duration_ms      REAL
+            )""",
+            """CREATE TABLE IF NOT EXISTS prompts (
+                id            TEXT PRIMARY KEY,
+                name          TEXT,
+                version       INTEGER,
+                content       TEXT,
+                prompt_type   TEXT,
+                tags          TEXT,
+                created_at    REAL,
+                is_production INTEGER DEFAULT 0,
+                UNIQUE(name, version)
+            )""",
+        ]
+        for stmt in stmts:
+            try:
+                conn.execute(stmt)
+            except Exception:
+                pass
+        conn.commit()
+
+    def _save_to_db(self, rec: CallRecord) -> int | None:
+        """Persist record and return the inserted row ID (for span linking)."""
         import json
 
         try:
             conn = sqlite3.connect(str(self._persist_path))
-            conn.execute(
+            cursor = conn.execute(
                 """
                 INSERT INTO llm_calls
                     (function_name, call_stack, model, provider,
@@ -190,10 +312,12 @@ class Tracker:
                     rec.git_commit,
                 ),
             )
+            row_id = cursor.lastrowid
             conn.commit()
             conn.close()
+            return row_id
         except Exception:
-            pass  # never crash the user's code due to tracking failure
+            return None  # never crash the user's code due to tracking failure
 
     def load_from_db(self) -> list[CallRecord]:
         """Load all historical records from the SQLite database."""

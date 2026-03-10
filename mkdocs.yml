@@ -1,0 +1,99 @@
+site_name: tokenspy
+site_url: https://pinakimishra95.github.io/tokenspy
+site_description: cProfile for LLMs — find which function is burning your AI budget. Zero config, no proxy, flame graph output.
+repo_name: pinakimishra95/tokenspy
+repo_url: https://github.com/pinakimishra95/tokenspy
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - scheme: default
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep orange
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started.md
+    - Quickstart: quickstart.md
+  - Usage:
+    - Decorator: usage/decorator.md
+    - Context Manager: usage/context-manager.md
+    - Streaming: usage/streaming.md
+    - Budget Alerts: usage/budget-alerts.md
+    - Persistence: usage/persistence.md
+    - Programmatic Access: usage/programmatic.md
+  - Integrations:
+    - LangChain / LangGraph: integrations/langchain.md
+    - GitHub Actions: integrations/github-actions.md
+  - CLI Reference: cli.md
+  - API Reference: api-reference.md
+  - How It Works: how-it-works.md
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - def_list
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pinakimishra95/tokenspy
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/tokenspy/
+  analytics:
+    provider: google
+    property: ""  # add your GA4 property if desired
+
+extra_css:
+  - assets/extra.css

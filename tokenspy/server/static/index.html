@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en" x-data="app()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tokenspy dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .tab-active { border-bottom: 2px solid #f97316; color: #f97316; }
+    .span-indent-0 { padding-left: 0; }
+    .span-indent-1 { padding-left: 1.25rem; }
+    .span-indent-2 { padding-left: 2.5rem; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-mono text-sm">
+
+<!-- Header -->
+<header class="border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-orange-400 font-bold text-lg">tokenspy</span>
+    <span class="text-gray-500 text-xs">local-first LLM observability</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <span x-show="live" class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+    <span x-show="live" class="text-xs text-green-400">live</span>
+    <span x-show="!live" class="text-xs text-gray-500">disconnected</span>
+  </div>
+</header>
+
+<!-- Nav tabs -->
+<nav class="border-b border-gray-800 px-6 flex gap-6">
+  <template x-for="tab in tabs" :key="tab">
+    <button
+      @click="activeTab = tab"
+      :class="activeTab === tab ? 'tab-active' : 'text-gray-400 hover:text-gray-200'"
+      class="py-3 text-xs uppercase tracking-wider font-semibold transition-colors"
+      x-text="tab">
+    </button>
+  </template>
+</nav>
+
+<!-- Content -->
+<main class="p-6" x-cloak>
+
+  <!-- OVERVIEW -->
+  <div x-show="activeTab === 'Overview'">
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-gray-400 text-xs mb-1">Total Cost</div>
+        <div class="text-2xl font-bold text-orange-400" x-text="'$' + (summary.total_cost_usd || 0).toFixed(4)"></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-gray-400 text-xs mb-1">Total Calls</div>
+        <div class="text-2xl font-bold text-white" x-text="summary.total_calls || 0"></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-gray-400 text-xs mb-1">Total Tokens</div>
+        <div class="text-2xl font-bold text-white" x-text="(summary.total_tokens || 0).toLocaleString()"></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-gray-400 text-xs mb-1">Live Updates</div>
+        <div class="text-2xl font-bold" :class="live ? 'text-green-400' : 'text-gray-500'" x-text="live ? 'ON' : 'OFF'"></div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-xs text-gray-400 mb-3">Cost per Day (last 7 days)</div>
+        <canvas id="costChart" height="180"></canvas>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-xs text-gray-400 mb-3">Cost by Model</div>
+        <canvas id="modelChart" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- Top functions table -->
+    <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+      <div class="text-xs text-gray-400 mb-3">Top Functions by Cost</div>
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-gray-500 border-b border-gray-800">
+            <th class="text-left py-2">Function</th>
+            <th class="text-right py-2">Cost</th>
+            <th class="text-right py-2">Calls</th>
+            <th class="text-right py-2">Tokens</th>
+            <th class="text-right py-2">Avg ms</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="fn in topFunctions" :key="fn.function">
+            <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
+              <td class="py-2 text-orange-300" x-text="fn.function"></td>
+              <td class="py-2 text-right text-green-400" x-text="'$' + (fn.cost_usd||0).toFixed(4)"></td>
+              <td class="py-2 text-right" x-text="fn.calls"></td>
+              <td class="py-2 text-right" x-text="(fn.tokens||0).toLocaleString()"></td>
+              <td class="py-2 text-right text-gray-400" x-text="(fn.avg_ms||0).toFixed(0)"></td>
+            </tr>
+          </template>
+          <tr x-show="!topFunctions.length">
+            <td colspan="5" class="py-4 text-center text-gray-600">No data yet. Run some LLM calls with tokenspy.init(persist=True).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TRACES -->
+  <div x-show="activeTab === 'Traces'">
+    <div x-show="!selectedTrace">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-xs text-gray-400" x-text="traces.length + ' traces'"></div>
+        <button @click="loadTraces()" class="text-xs text-orange-400 hover:text-orange-300">↺ Refresh</button>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-gray-500 border-b border-gray-800 bg-gray-900/80">
+              <th class="text-left px-4 py-3">Name</th>
+              <th class="text-left px-4 py-3">Duration</th>
+              <th class="text-left px-4 py-3">Tags</th>
+              <th class="text-left px-4 py-3">User</th>
+              <th class="text-left px-4 py-3">Status</th>
+              <th class="text-left px-4 py-3">Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="t in traces" :key="t.id">
+              <tr @click="selectTrace(t.id)" class="border-b border-gray-800/40 hover:bg-gray-800/40 cursor-pointer">
+                <td class="px-4 py-3 text-orange-300 font-semibold" x-text="t.name"></td>
+                <td class="px-4 py-3 text-gray-300" x-text="t.duration_ms ? t.duration_ms.toFixed(0) + 'ms' : '—'"></td>
+                <td class="px-4 py-3">
+                  <template x-for="tag in (t.tags || [])" :key="tag">
+                    <span class="inline-block bg-gray-700 text-gray-300 rounded px-1.5 py-0.5 mr-1 text-xs" x-text="tag"></span>
+                  </template>
+                </td>
+                <td class="px-4 py-3 text-gray-400" x-text="t.user_id || '—'"></td>
+                <td class="px-4 py-3">
+                  <span :class="t.error ? 'text-red-400' : 'text-green-400'" x-text="t.error ? 'error' : 'ok'"></span>
+                </td>
+                <td class="px-4 py-3 text-gray-500" x-text="t.start_time ? new Date(t.start_time * 1000).toLocaleTimeString() : ''"></td>
+              </tr>
+            </template>
+            <tr x-show="!traces.length">
+              <td colspan="6" class="px-4 py-6 text-center text-gray-600">No traces yet. Use tokenspy.trace() to create traces.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trace detail -->
+    <div x-show="selectedTrace">
+      <button @click="selectedTrace = null" class="mb-4 text-xs text-orange-400 hover:text-orange-300">← Back to traces</button>
+      <template x-if="selectedTrace">
+        <div>
+          <h2 class="text-sm font-bold text-white mb-1" x-text="selectedTrace.name"></h2>
+          <div class="text-xs text-gray-500 mb-4" x-text="'Trace ID: ' + selectedTrace.id"></div>
+
+          <!-- Scores -->
+          <div x-show="selectedTrace.scores && selectedTrace.scores.length" class="mb-4">
+            <div class="text-xs text-gray-400 mb-2">Scores</div>
+            <div class="flex gap-3 flex-wrap">
+              <template x-for="s in (selectedTrace.scores || [])" :key="s.name">
+                <div class="bg-gray-800 border border-gray-700 rounded px-3 py-2">
+                  <div class="text-xs text-gray-400" x-text="s.name"></div>
+                  <div class="text-lg font-bold text-orange-400" x-text="(s.value || 0).toFixed(2)"></div>
+                  <div class="text-xs text-gray-500" x-text="s.scorer"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Span tree -->
+          <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div class="text-xs text-gray-400 mb-3">Spans</div>
+            <template x-for="s in (selectedTrace.spans || [])" :key="s.id">
+              <div class="border-l-2 border-gray-700 pl-3 mb-2 ml-2">
+                <div class="flex items-center gap-3">
+                  <span class="inline-block text-xs px-1.5 py-0.5 rounded"
+                    :class="{
+                      'bg-blue-900 text-blue-300': s.type === 'llm',
+                      'bg-purple-900 text-purple-300': s.type === 'retrieval',
+                      'bg-gray-700 text-gray-300': s.type === 'function' || s.type === 'custom'
+                    }" x-text="s.type"></span>
+                  <span class="text-orange-300 font-semibold text-xs" x-text="s.name"></span>
+                  <span class="text-gray-500 text-xs" x-text="s.duration_ms ? s.duration_ms.toFixed(0) + 'ms' : ''"></span>
+                  <span x-show="s.model" class="text-gray-400 text-xs" x-text="s.model"></span>
+                  <span x-show="s.cost_usd" class="text-green-400 text-xs" x-text="s.cost_usd ? '$' + s.cost_usd.toFixed(4) : ''"></span>
+                </div>
+              </div>
+            </template>
+            <div x-show="!selectedTrace.spans || !selectedTrace.spans.length" class="text-gray-600 text-xs">No spans recorded.</div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- EVALUATIONS -->
+  <div x-show="activeTab === 'Evaluations'">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Experiments -->
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-xs text-gray-400 mb-3">Experiments</div>
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-gray-500 border-b border-gray-800">
+              <th class="text-left py-2">Name</th>
+              <th class="text-right py-2">Items</th>
+              <th class="text-right py-2">Pass rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="e in experiments" :key="e.id">
+              <tr class="border-b border-gray-800/40">
+                <td class="py-2 text-orange-300" x-text="e.name"></td>
+                <td class="py-2 text-right" x-text="e.item_count"></td>
+                <td class="py-2 text-right" :class="(e.pass_rate||0) >= 80 ? 'text-green-400' : 'text-red-400'"
+                    x-text="e.pass_rate !== null ? e.pass_rate + '%' : '—'"></td>
+              </tr>
+            </template>
+            <tr x-show="!experiments.length">
+              <td colspan="3" class="py-4 text-center text-gray-600">No experiments yet. Use tokenspy.experiment().</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Datasets -->
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-xs text-gray-400 mb-3">Datasets</div>
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-gray-500 border-b border-gray-800">
+              <th class="text-left py-2">Name</th>
+              <th class="text-right py-2">Items</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="d in datasets" :key="d.id">
+              <tr class="border-b border-gray-800/40">
+                <td class="py-2 text-orange-300" x-text="d.name"></td>
+                <td class="py-2 text-right" x-text="d.item_count"></td>
+              </tr>
+            </template>
+            <tr x-show="!datasets.length">
+              <td colspan="2" class="py-4 text-center text-gray-600">No datasets yet. Use tokenspy.dataset().</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROMPTS -->
+  <div x-show="activeTab === 'Prompts'">
+    <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+      <div class="text-xs text-gray-400 mb-3">Prompt Versions</div>
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-gray-500 border-b border-gray-800">
+            <th class="text-left py-2">Name</th>
+            <th class="text-right py-2">Version</th>
+            <th class="text-left py-2 pl-4">Preview</th>
+            <th class="text-right py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="p in promptList" :key="p.name + p.version">
+            <tr class="border-b border-gray-800/40">
+              <td class="py-2 text-orange-300" x-text="p.name"></td>
+              <td class="py-2 text-right text-gray-400">v<span x-text="p.version"></span></td>
+              <td class="py-2 pl-4 text-gray-400 truncate max-w-xs" x-text="p.preview"></td>
+              <td class="py-2 text-right">
+                <span x-show="p.is_production" class="bg-green-900 text-green-300 rounded px-1.5 py-0.5 text-xs">prod</span>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="!promptList.length">
+            <td colspan="4" class="py-4 text-center text-gray-600">No prompts yet. Use tokenspy.prompts.push().</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div x-show="activeTab === 'Settings'">
+    <div class="max-w-lg">
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 mb-4">
+        <div class="text-xs text-gray-400 mb-3">Configuration</div>
+        <div class="space-y-3 text-xs">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Dashboard version</span>
+            <span class="text-gray-300">tokenspy v0.2.0</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">WebSocket</span>
+            <span :class="live ? 'text-green-400' : 'text-red-400'" x-text="live ? 'Connected' : 'Disconnected'"></span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+        <div class="text-xs text-gray-400 mb-2">Quick Start</div>
+        <pre class="text-xs text-gray-300 whitespace-pre-wrap">import tokenspy
+
+# Enable persistence (required for dashboard)
+tokenspy.init(persist=True)
+
+# Structured tracing
+with tokenspy.trace("pipeline") as t:
+    with tokenspy.span("retrieve") as s:
+        docs = fetch(query)
+        s.update(output=docs)
+    t.score("relevance", 0.92)
+
+# Evaluations
+ds = tokenspy.dataset("golden")
+ds.add(input={"q": "2+2?"}, expected_output="4")
+
+# Prompt versioning
+p = tokenspy.prompts.push("my-prompt", "Answer: {{q}}")
+compiled = p.compile(q="What is 2+2?")</pre>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+function app() {
+  return {
+    tabs: ['Overview', 'Traces', 'Evaluations', 'Prompts', 'Settings'],
+    activeTab: 'Overview',
+    live: false,
+    summary: {},
+    topFunctions: [],
+    timeseries: [],
+    modelBreakdown: [],
+    traces: [],
+    selectedTrace: null,
+    experiments: [],
+    datasets: [],
+    promptList: [],
+    costChart: null,
+    modelChart: null,
+
+    async init() {
+      await this.loadAll();
+      this.connectWS();
+      this.$watch('activeTab', (tab) => {
+        if (tab === 'Traces') this.loadTraces();
+        if (tab === 'Evaluations') this.loadEvals();
+        if (tab === 'Prompts') this.loadPrompts();
+      });
+    },
+
+    async loadAll() {
+      await Promise.all([
+        this.loadSummary(),
+        this.loadTimeseries(),
+        this.loadModelBreakdown(),
+        this.loadTopFunctions(),
+      ]);
+      this.renderCharts();
+    },
+
+    async loadSummary() {
+      try {
+        const r = await fetch('/api/summary');
+        this.summary = await r.json();
+      } catch(e) {}
+    },
+
+    async loadTimeseries() {
+      try {
+        const r = await fetch('/api/costs/timeseries?days=7');
+        this.timeseries = await r.json();
+      } catch(e) {}
+    },
+
+    async loadModelBreakdown() {
+      try {
+        const r = await fetch('/api/costs/by_model');
+        this.modelBreakdown = await r.json();
+      } catch(e) {}
+    },
+
+    async loadTopFunctions() {
+      try {
+        const r = await fetch('/api/costs/by_function');
+        this.topFunctions = await r.json();
+      } catch(e) {}
+    },
+
+    async loadTraces() {
+      try {
+        const r = await fetch('/api/traces?limit=50');
+        this.traces = await r.json();
+      } catch(e) {}
+    },
+
+    async selectTrace(id) {
+      try {
+        const r = await fetch('/api/traces/' + id);
+        this.selectedTrace = await r.json();
+      } catch(e) {}
+    },
+
+    async loadEvals() {
+      try {
+        const [expR, dsR] = await Promise.all([
+          fetch('/api/experiments'), fetch('/api/datasets')
+        ]);
+        this.experiments = await expR.json();
+        this.datasets = await dsR.json();
+      } catch(e) {}
+    },
+
+    async loadPrompts() {
+      try {
+        const r = await fetch('/api/prompts');
+        this.promptList = await r.json();
+      } catch(e) {}
+    },
+
+    renderCharts() {
+      // Cost per day
+      const costCtx = document.getElementById('costChart');
+      if (costCtx) {
+        if (this.costChart) this.costChart.destroy();
+        this.costChart = new Chart(costCtx, {
+          type: 'bar',
+          data: {
+            labels: this.timeseries.map(d => d.date),
+            datasets: [{
+              label: 'Cost (USD)',
+              data: this.timeseries.map(d => d.cost_usd),
+              backgroundColor: '#f97316aa',
+              borderColor: '#f97316',
+              borderWidth: 1,
+            }]
+          },
+          options: {
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: '#6b7280' }, grid: { color: '#1f2937' } },
+              y: { ticks: { color: '#6b7280', callback: v => '$' + v.toFixed(3) }, grid: { color: '#1f2937' } }
+            }
+          }
+        });
+      }
+
+      // Model donut
+      const modelCtx = document.getElementById('modelChart');
+      if (modelCtx && this.modelBreakdown.length) {
+        if (this.modelChart) this.modelChart.destroy();
+        const colors = ['#f97316','#fb923c','#fdba74','#fed7aa','#ffedd5'];
+        this.modelChart = new Chart(modelCtx, {
+          type: 'doughnut',
+          data: {
+            labels: this.modelBreakdown.map(m => m.model),
+            datasets: [{
+              data: this.modelBreakdown.map(m => m.cost_usd),
+              backgroundColor: colors,
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'right', labels: { color: '#9ca3af', font: { size: 10 } } },
+            }
+          }
+        });
+      }
+    },
+
+    connectWS() {
+      try {
+        const ws = new WebSocket('ws://' + location.host + '/ws');
+        ws.onopen = () => { this.live = true; };
+        ws.onclose = () => { this.live = false; setTimeout(() => this.connectWS(), 3000); };
+        ws.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'new_call') {
+            this.summary.total_calls = (this.summary.total_calls || 0) + 1;
+            this.summary.total_cost_usd = (this.summary.total_cost_usd || 0) + (msg.data.cost_usd || 0);
+            this.summary.total_tokens = (this.summary.total_tokens || 0) + (msg.data.tokens || 0);
+          }
+        };
+      } catch(e) { this.live = false; }
+    },
+  };
+}
+</script>
+</body>
+</html>

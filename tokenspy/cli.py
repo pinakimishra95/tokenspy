@@ -143,6 +143,27 @@ def cmd_annotate(args: argparse.Namespace) -> None:
     annotate_cost_diff(args.current, args.baseline)
 
 
+# ── serve ──────────────────────────────────────────────────────────────────────
+
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Start the local web dashboard."""
+    try:
+        from tokenspy.server import serve
+    except ImportError:
+        print(
+            "[tokenspy] 'serve' requires fastapi and uvicorn.\n"
+            "  Run: pip install tokenspy[server]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    serve(
+        port=args.port,
+        host=args.host,
+        db_path=args.db,
+        open_browser=not args.no_open,
+    )
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -179,6 +200,14 @@ def main() -> None:
     a.add_argument("--current", required=True, metavar="PATH", help="Current run DB path")
     a.add_argument("--baseline", default=None, metavar="PATH", help="Baseline DB path")
     a.set_defaults(func=cmd_annotate)
+
+    # serve
+    sv = sub.add_parser("serve", help="Start the local web dashboard")
+    sv.add_argument("--port", type=int, default=7234, help="Port to listen on (default: 7234)")
+    sv.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    sv.add_argument("--db", default=None, metavar="PATH", help="SQLite DB path")
+    sv.add_argument("--no-open", action="store_true", help="Don't open browser automatically")
+    sv.set_defaults(func=cmd_serve)
 
     args = parser.parse_args()
     if args.command is None:

@@ -2,9 +2,9 @@
 
 <div align="center">
 
-**You're spending $800/month on LLMs. Which function is burning it?**
+**The local-first LLM observability stack. No cloud. No signup. No proxy.**
 
-*Find out in one line. No proxy. No signup. No traffic rerouting.*
+*Cost profiling · Structured tracing · Evaluations · Prompt versioning · Live dashboard*
 
 [![PyPI version](https://img.shields.io/pypi/v/tokenspy.svg)](https://pypi.org/project/tokenspy/)
 [![Tests](https://github.com/pinakimishra95/tokenspy/actions/workflows/tests.yml/badge.svg)](https://github.com/pinakimishra95/tokenspy/actions)
@@ -31,13 +31,30 @@ def run_pipeline(query):
     return generate_report(entities)    # ← or this one?
 ```
 
-Langfuse and Helicone force you to reroute traffic through their proxy. Sign up. Configure. Break your local setup.
+Langfuse and Braintrust force you to reroute traffic through their cloud proxy. Sign up. Configure API keys. Break your local setup. Pay monthly.
 
-**tokenspy takes 1 line. No proxy. No signup. Runs entirely on your machine.**
+**tokenspy is your local alternative. One line. Runs entirely on your machine. Forever free.**
 
 ---
 
-## The Fix
+## What's New in v0.2.0 — Full Observability Stack
+
+tokenspy now covers everything Langfuse and Braintrust do — without sending a single byte to the cloud.
+
+| Feature | v0.1 | v0.2.0 |
+|---|---|---|
+| Cost flame graph | ✅ | ✅ |
+| Budget alerts | ✅ | ✅ |
+| SQLite persistence | ✅ | ✅ |
+| **Structured tracing (Trace + Span)** | ❌ | ✅ |
+| **OpenTelemetry export** | ❌ | ✅ |
+| **Evaluations + datasets** | ❌ | ✅ |
+| **Prompt versioning** | ❌ | ✅ |
+| **Live web dashboard** | ❌ | ✅ |
+
+---
+
+## Feature 1: Cost Profiling (the original)
 
 ```python
 import tokenspy
@@ -52,9 +69,7 @@ run_pipeline("Analyze Q3 earnings")
 tokenspy.report()
 ```
 
----
-
-## Output
+**Terminal output:**
 
 ```
 ╔══════════════════════════════════════════════════════════════════════╗
@@ -79,174 +94,449 @@ tokenspy.report()
 ║                                                                      ║
 ║  🔴 fetch_and_summarize [gpt-4o]                                     ║
 ║     Switch to gpt-4o-mini — 94% cheaper  (~$540/month savings)      ║
-║                                                                      ║
-║  🟡 fetch_and_summarize [gpt-4o]                                     ║
-║     Avg input: 12,000 tokens. Trim context or limit retrieval.       ║
 ╚══════════════════════════════════════════════════════════════════════╝
 ```
 
-**Now you know: `fetch_and_summarize` is burning 73% of your budget. Fix that one function, cut your bill by $540/month.**
+**Now you know: `fetch_and_summarize` is burning 73% of your budget. Fix that one function.**
+
+---
+
+## Feature 2: Structured Tracing
+
+> See *exactly* what happens inside every LLM call — inputs, outputs, tokens, latency — organized into a tree of spans, just like Langfuse.
+
+### How it works
+
+```
+Your Code
+    │
+    ├── tokenspy.trace("research_pipeline")          ← top-level trace
+    │       │
+    │       ├── tokenspy.span("retrieve_docs")        ← child span
+    │       │       └── vector_store.search(...)
+    │       │
+    │       ├── tokenspy.span("summarize", "llm")     ← LLM span
+    │       │       └── client.chat.completions.create(...)
+    │       │               │
+    │       │               └── tokenspy interceptor auto-links:
+    │       │                     model, input_tokens, output_tokens,
+    │       │                     cost_usd, duration_ms → span record
+    │       │
+    │       └── tokenspy.span("rank_results")
+    │
+    └── t.score("relevance", 0.92)                   ← attach score
+```
+
+**LLM calls made inside a span are automatically linked** — no manual wiring.
+
+### Code example
+
+```python
+import tokenspy
+
+tokenspy.init(persist=True)   # save traces to ~/.tokenspy/usage.db
+
+with tokenspy.trace("research_pipeline", input={"query": "climate change"}) as t:
+
+    with tokenspy.span("retrieve_docs", span_type="retrieval") as s:
+        docs = vector_store.search("climate change", top_k=5)
+        s.update(output={"n_docs": len(docs), "sources": [d.title for d in docs]})
+
+    with tokenspy.span("summarize", span_type="llm") as s:
+        # Any LLM call here is AUTOMATICALLY attributed to this span
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": f"Summarize: {docs}"}]
+        )
+        s.update(output=response.choices[0].message.content)
+
+    with tokenspy.span("rank_results", span_type="function") as s:
+        ranked = rerank(docs, response)
+        s.update(output=ranked[:3])
+
+    t.update(output=ranked[:3])
+
+# Attach quality scores after the fact
+t.score("relevance", 0.92, scorer="human")
+t.score("hallucination", 0.05, scorer="llm_judge", comment="Grounded in sources")
+```
+
+### What gets recorded per span
+
+```
+Span: summarize
+  ├── span_type:     llm
+  ├── start_time:    2026-03-10 14:23:01.412
+  ├── duration_ms:   842
+  ├── model:         gpt-4o               ← auto-linked from LLM call
+  ├── input_tokens:  4,200                ← auto-linked
+  ├── output_tokens: 380                  ← auto-linked
+  ├── cost_usd:      $0.0144              ← auto-linked
+  ├── status:        ok
+  └── output:        "Climate change refers to..."
+```
+
+### Why tracing matters
+
+**Without tracing:**
+```
+cost report: run_pipeline → $0.052 total, 3 calls
+```
+You know the total. You don't know *which step* took 800ms. You don't know what the retrieval returned. You can't replay it.
+
+**With tracing:**
+```
+trace: research_pipeline  842ms  $0.052
+  ├── retrieve_docs       12ms   $0.000  → returned 5 docs
+  ├── summarize           810ms  $0.0144 → gpt-4o · 4,200 in · 380 out
+  └── rank_results        8ms    $0.000  → [doc3, doc1, doc5]
+  scores: relevance=0.92  hallucination=0.05
+```
+You see the full picture. You know retrieval was fast but the LLM was slow. You have the inputs and outputs for debugging. You can score the quality.
+
+### Nested spans and async
+
+Works with nested spans and async code — no changes needed:
+
+```python
+# Async works identically
+async def run():
+    async with tokenspy.trace("async_pipeline") as t:
+        async with tokenspy.span("step1") as s:
+            result = await async_llm_call()
+            s.update(output=result)
+```
+
+---
+
+## Feature 3: OpenTelemetry Export
+
+Send tokenspy data to **Grafana, Jaeger, Datadog, Honeycomb** — any OTEL-compatible backend:
+
+```python
+tokenspy.init(
+    persist=True,
+    otel_endpoint="http://localhost:4317",   # your OTLP gRPC endpoint
+    otel_service_name="my-llm-app",
+)
+```
+
+```bash
+pip install tokenspy[otel]
+```
+
+Every LLM call is exported as an OpenTelemetry span with standard attributes:
+
+```
+llm.openai.chat
+  llm.request.model:           "gpt-4o"
+  llm.usage.prompt_tokens:     4200
+  llm.usage.completion_tokens: 380
+  llm.usage.cost_usd:          0.0144
+  code.function:               "summarize"
+```
+
+**What this unlocks:**
+- Grafana dashboard: cost per minute, P95 latency, error rate
+- Jaeger: distributed trace view across microservices
+- Datadog: alert when cost per request exceeds threshold
+- Any existing OTEL pipeline — tokenspy plugs straight in
+
+---
+
+## Feature 4: Evaluations + Datasets
+
+Run your LLM functions against golden test sets and track quality over time — like Braintrust, but local.
+
+```python
+import tokenspy
+from tokenspy.eval import scorers
+
+tokenspy.init(persist=True)
+
+# 1. Build a dataset
+ds = tokenspy.dataset("qa-golden")
+ds.add(input={"question": "Capital of France?"}, expected_output="Paris")
+ds.add(input={"question": "Capital of Germany?"}, expected_output="Berlin")
+ds.from_json("more_test_cases.json")   # bulk import
+
+# 2. Define the function under test
+@tokenspy.profile
+def answer_question(input: dict) -> str:
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": input["question"]}]
+    )
+    return response.choices[0].message.content.strip()
+
+# 3. Run the experiment
+exp = tokenspy.experiment(
+    "gpt4o-mini-baseline",
+    dataset="qa-golden",
+    fn=answer_question,
+    scorers=[scorers.exact_match, scorers.contains],
+)
+results = exp.run()
+results.summary()
+```
+
+**Terminal output:**
+
+```
+tokenspy — Experiment: gpt4o-mini-baseline
+Dataset: qa-golden  (2 items)
+────────────────────────────────────────────────────────
+  ✓  Capital of France?     exact_match=1.0  contains=1.0  $0.0001  112ms
+  ✓  Capital of Germany?    exact_match=1.0  contains=1.0  $0.0001   98ms
+────────────────────────────────────────────────────────
+  Passed:  2/2  (100.0%)
+  Cost:    $0.0002
+  Avg ms:  105
+```
+
+### LLM-as-judge scoring
+
+```python
+from tokenspy.eval import scorers
+
+# Scores 0.0–1.0 using a small model as judge
+judge = scorers.llm_judge(
+    criteria="Is the answer factually accurate and concise?",
+    model="gpt-4o-mini",
+)
+
+exp = tokenspy.experiment(
+    "accuracy-check",
+    dataset="qa-golden",
+    fn=answer_question,
+    scorers=[scorers.exact_match, judge],
+)
+results = exp.run()
+```
+
+### Compare experiments
+
+```python
+# After a prompt change, compare against the baseline
+results.compare("gpt4o-mini-baseline")
+```
+
+```
+Experiment comparison: gpt4o-mini-v2  vs  gpt4o-mini-baseline
+────────────────────────────────────────────────
+  exact_match:   0.95  →  0.80   ▼ 15%
+  llm_judge:     0.88  →  0.91   ▲  3%
+  cost:       $0.0002  →  $0.0003  ▲ 50%
+  pass rate:    100%  →   80%    ▼ 20%
+────────────────────────────────────────────────
+```
+
+---
+
+## Feature 5: Prompt Versioning
+
+Track every version of every prompt. Know exactly which prompt version caused a cost spike or quality drop.
+
+```python
+import tokenspy
+
+tokenspy.init(persist=True)
+
+# Push a new version (auto-increments: 1, 2, 3...)
+p = tokenspy.prompts.push(
+    "summarizer",
+    "Summarize the following text in {{style}} style, max {{max_words}} words:\n\n{{text}}"
+)
+print(p.version)   # 1
+
+# Compile with variables
+compiled = p.compile(
+    style="concise",
+    max_words=100,
+    text="Long document about climate change..."
+)
+# → "Summarize the following text in concise style, max 100 words:\n\nLong document..."
+
+# Pull specific version or latest
+p_latest = tokenspy.prompts.pull("summarizer")
+p_v1     = tokenspy.prompts.pull("summarizer", version=1)
+p_prod   = tokenspy.prompts.pull("summarizer", label="production")
+
+# Mark a version as production
+tokenspy.prompts.set_production("summarizer", version=2)
+
+# List all prompts
+tokenspy.prompts.list()
+# [{"name": "summarizer", "version": 1, ...},
+#  {"name": "summarizer", "version": 2, "is_production": True}, ...]
+```
+
+**Why this matters:** When you run an experiment, you know exactly which prompt version was active. When costs spike, you can diff v1 vs v2 and see what changed.
+
+---
+
+## Feature 6: Live Web Dashboard
+
+```bash
+tokenspy serve
+# → http://localhost:7234 (opens automatically)
+
+tokenspy serve --port 8080 --db /path/to/custom.db
+```
+
+```bash
+pip install tokenspy[server]
+```
+
+The dashboard has 5 tabs:
+
+**Overview** — cost/day bar chart, top functions by cost, model breakdown donut, live call counter (WebSocket push)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  tokenspy dashboard                    live  ● 3 calls/min  │
+├──────────────┬──────────────────────────────────────────────┤
+│  Overview    │  Cost per day (last 7 days)                   │
+│  Traces      │  ████ ██ ███ █████ ██ ████ ███               │
+│  Evals       │                                               │
+│  Prompts     │  Top functions        Cost      % of total    │
+│  Settings    │  fetch_and_summarize  $0.038    73%  ████████ │
+│              │  generate_report      $0.011    21%  ████     │
+│              │  extract_entities     $0.003     6%  █        │
+└──────────────┴──────────────────────────────────────────────┘
+```
+
+**Traces** — browse every trace, click to expand the full span tree with inputs/outputs/scores
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Traces                               Filter: all           │
+├─────────────────────────────────────────────────────────────┤
+│  ▼ research_pipeline   842ms  $0.052  2026-03-10 14:23      │
+│    ├─ retrieve_docs    12ms   $0.000  retrieval             │
+│    ├─ summarize        810ms  $0.0144 llm · gpt-4o          │
+│    └─ rank_results     8ms    $0.000  function              │
+│    scores: relevance=0.92  hallucination=0.05               │
+│                                                             │
+│  ▶ data_extraction     340ms  $0.021  2026-03-10 14:19      │
+│  ▶ report_generation   190ms  $0.009  2026-03-10 14:15      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Evaluations** — run history, pass rates, score distributions per experiment
+
+**Prompts** — version history table, production flag, preview content
+
+**Settings** — DB path, OTEL status, version info
 
 ---
 
 ## Quick Start
 
-### Decorator (most common)
+### Minimal (1 line)
 
 ```python
 import tokenspy
 
 @tokenspy.profile
-def summarize_docs(docs: list[str]) -> str:
-    return openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": "\n".join(docs)}]
-    ).choices[0].message.content
+def my_function():
+    return openai.chat.completions.create(model="gpt-4o", messages=[...])
 
-summarize_docs(my_docs)
-tokenspy.report()           # prints flame graph to terminal
-tokenspy.report("html")    # writes tokenspy_report.html, opens in browser
+my_function()
+tokenspy.report()
 ```
 
-### Context Manager
+### Full v0.2.0 setup
 
 ```python
-with tokenspy.session("research_task") as s:
-    response = anthropic_client.messages.create(
-        model="claude-haiku-4-5",
-        messages=[{"role": "user", "content": query}]
-    )
+import tokenspy
 
-print(f"Cost:   {s.cost_str}")    # "$0.0012"
-print(f"Tokens: {s.tokens}")      # 3,240
-print(f"Calls:  {s.calls}")       # 1
+tokenspy.init(
+    persist=True,        # save everything to ~/.tokenspy/usage.db
+    track_git=True,      # tag calls with git SHA
+    otel_endpoint="http://localhost:4317",  # optional: export to Grafana/Jaeger
+)
+
+with tokenspy.trace("my_pipeline", input={"query": q}) as t:
+    with tokenspy.span("retrieve") as s:
+        docs = fetch(q)
+        s.update(output=docs)
+    with tokenspy.span("generate", span_type="llm") as s:
+        answer = llm_call(docs)      # auto-linked to span
+    t.update(output=answer)
+
+t.score("quality", 0.9)
+
+tokenspy.report()
 ```
 
-### Streaming (works automatically)
-
-```python
-@tokenspy.profile
-def stream_response(query):
-    # stream=True is fully supported — no changes needed
-    for chunk in openai_client.chat.completions.create(
-        model="gpt-4o", messages=[...], stream=True
-    ):
-        print(chunk.choices[0].delta.content or "", end="")
-
-stream_response("Summarize this")
-tokenspy.report()   # tokens + cost captured after stream completes
-```
-
-### Budget Alerts
-
-```python
-# Warn if a single invocation costs more than $0.10
-@tokenspy.profile(budget_usd=0.10)
-def my_agent(query): ...
-
-# Raise an exception instead of just warning
-@tokenspy.profile(budget_usd=0.10, on_exceeded="raise")
-def strict_agent(query): ...
-```
-
-```
-UserWarning: [tokenspy] Budget exceeded in my_agent: $0.1423 > $0.1000
-```
-
-### Programmatic Access
-
-```python
-data = tokenspy.stats()
-# {
-#   "total_cost_usd": 0.042,
-#   "total_tokens": 15000,
-#   "total_calls": 3,
-#   "by_function": {"summarize_docs": 0.038, "generate_report": 0.004},
-#   "by_model":    {"gpt-4o": 0.040, "gpt-4o-mini": 0.002},
-#   "calls": [...],
-# }
-```
-
-### Persistent Tracking Across Sessions
-
-```python
-# In your app startup:
-tokenspy.init(persist=True)            # saves to ~/.tokenspy/usage.db
-tokenspy.init(persist=True, track_git=True)  # also tags each call with git SHA
-
-@tokenspy.profile
-def my_agent(query): ...
+```bash
+tokenspy serve   # open dashboard at http://localhost:7234
 ```
 
 ---
 
 ## CLI
 
-After running with `persist=True`, inspect your usage from the terminal:
-
 ```bash
-# Show recent call history
-tokenspy history --limit 20
+# Call history
+tokenspy history
+tokenspy history --limit 50
 
-# Print cost report from saved data
+# Reports
 tokenspy report
 tokenspy report --format html
 
-# Diff two runs (e.g. before and after a refactor)
+# Cost diff
 tokenspy compare --db before.db --db after.db
+tokenspy compare --commit abc123 --commit def456
 
-# Compare costs between two git commits
-tokenspy compare --commit abc123 --commit def456 --db ~/.tokenspy/usage.db
+# GitHub Actions annotations
+tokenspy annotate --current current.db --baseline baseline.db
+
+# Live dashboard
+tokenspy serve
+tokenspy serve --port 8080 --no-open
 ```
 
-```
-Timestamp            Function               Model                      Cost   Tokens       ms
-───────────────────────────────────────────────────────────────────────────────────────────────
-2026-02-26 09:14:33  run_agent              gpt-4o                   $0.0523   18734      842
-2026-02-26 09:14:41  summarize_docs         claude-haiku-4-5         $0.0012    3240      210
+---
+
+## Budget Alerts
+
+```python
+@tokenspy.profile(budget_usd=0.10)
+def my_agent(query): ...
+# UserWarning: [tokenspy] Budget exceeded in my_agent: $0.1423 > $0.1000
+
+@tokenspy.profile(budget_usd=0.10, on_exceeded="raise")
+def strict_agent(query): ...
+# raises BudgetExceededError (inherits BaseException — propagates through SDK guards)
 ```
 
 ---
 
 ## LangChain / LangGraph
 
-No proxy, no SDK swap — just add a callback:
-
 ```python
 from tokenspy.integrations.langchain import TokenspyCallbackHandler
 
-# With any chain
 chain.invoke(prompt, config={"callbacks": [TokenspyCallbackHandler()]})
 
-# At model construction time
-from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4o", callbacks=[TokenspyCallbackHandler()])
-
-# Works with LangGraph agents too — same callback system
-```
-
-```bash
-pip install tokenspy[langchain]
+# Works with LangGraph agents — same callback system
 ```
 
 ---
 
 ## GitHub Actions — Cost Diff Per PR
 
-Catch cost regressions before they merge:
-
 ```python
-# In your CI test script:
 from tokenspy.ci import annotate_cost_diff
 annotate_cost_diff("current_run.db", "baseline.db")
 ```
 
-Outputs GitHub Actions annotations:
 ```
-::warning title=tokenspy cost regression::fetch_and_summarize: cost increased by $0.0312 (62.4%)
+::warning::fetch_and_summarize cost increased $0.031 (62.4%)
 ```
-
-And writes a Markdown table to the job summary:
 
 | Function | Cost | vs Baseline |
 |---|---|---|
@@ -257,36 +547,67 @@ And writes a Markdown table to the job summary:
 
 ## How It Works
 
-tokenspy monkey-patches the SDK client **in-process** — the same technique used by `py-spy` and `line_profiler`:
+tokenspy monkey-patches the SDK client **in-process** — the same technique as `py-spy` and `line_profiler`:
 
 ```
 Your Code
     │
-    ├── @tokenspy.profile ────────────────────────────── sets active function
-    │
-    └── openai_client.chat.completions.create(...)
-                │
-                └── tokenspy interceptor (in-process monkey-patch)
-                        ├── calls original SDK method
-                        ├── reads response.usage (tokens)
-                        ├── looks up cost in built-in pricing table
-                        ├── records: function · model · tokens · cost · duration
-                        └── returns response UNCHANGED to your code
+    ├── tokenspy.trace("pipeline") ──────────────── opens trace context
+    │       │
+    │       └── tokenspy.span("step") ────────────── opens span context
+    │               │
+    │               └── openai.chat.completions.create(...)
+    │                           │
+    │                           └── tokenspy interceptor (monkey-patch)
+    │                                   ├── calls original SDK method
+    │                                   ├── reads response.usage
+    │                                   ├── looks up cost in pricing table
+    │                                   ├── records CallRecord in Tracker
+    │                                   ├── auto-links to active span ← NEW
+    │                                   └── returns response unchanged
 
-tokenspy.report() → renders flame graph from recorded data
+tokenspy.report()   → flame graph
+tokenspy serve      → web dashboard
 ```
 
-**No proxy server. No HTTP interception. No environment variables. No configuration.**
+**No proxy server. No HTTP interception. No environment variables. Your code runs exactly as before.**
 
-Your code runs exactly as before. tokenspy just watches and keeps score.
+---
+
+## vs. Langfuse and Braintrust
+
+| | Langfuse | Braintrust | **tokenspy** |
+|---|---|---|---|
+| Requires proxy / cloud | ✅ cloud | ✅ cloud | **❌ fully local** |
+| Requires signup | ✅ yes | ✅ yes | **❌ no** |
+| Data leaves your machine | ✅ yes | ✅ yes | **❌ never** |
+| Works offline | ❌ no | ❌ no | **✅ yes** |
+| Zero dependencies (core) | ❌ no | ❌ no | **✅ yes** |
+| Structured tracing | ✅ yes | ✅ yes | **✅ yes** |
+| Evaluations + datasets | ✅ yes | ✅ yes | **✅ yes** |
+| LLM-as-judge scoring | ✅ yes | ✅ yes | **✅ yes** |
+| Prompt versioning | ✅ yes | ✅ yes | **✅ yes** |
+| OpenTelemetry export | ⚡ partial | ❌ no | **✅ yes** |
+| **Flame graph by function** | ❌ no | ❌ no | **✅ yes** |
+| **`@decorator` API** | ❌ no | ❌ no | **✅ yes** |
+| **Budget alerts** | ⚡ partial | ⚡ partial | **✅ yes** |
+| **Git commit cost tracking** | ❌ no | ❌ no | **✅ yes** |
+| **GitHub Actions cost diff** | ❌ no | ❌ no | **✅ yes** |
+| **Optimization hints** | ❌ no | ❌ no | **✅ yes** |
+| Monthly cost | $0–$250 | $0–$300 | **free forever** |
+
+**tokenspy's unique advantages:**
+- **No proxy** — intercepts in-process, zero latency overhead, works with any network config
+- **`@decorator` API** — profile any function with one line, no SDK changes
+- **Flame graph** — visual cost breakdown by function, not just by model
+- **Git tracking** — tag every call with commit SHA, compare costs across code versions
+- **PR cost diffs** — catch cost regressions in CI before they ship
 
 ---
 
 ## Supported Providers
 
-Automatically detected — nothing to configure:
-
-| Provider | Package | Intercepted |
+| Provider | Package | Auto-detected |
 |---|---|---|
 | **OpenAI** | `openai>=1.0` | `chat.completions.create` (sync + async + streaming) |
 | **Anthropic** | `anthropic>=0.30` | `messages.create` (sync + async + streaming) |
@@ -295,9 +616,23 @@ Automatically detected — nothing to configure:
 
 ---
 
+## Install Options
+
+```bash
+pip install tokenspy              # zero dependencies — core profiling only
+pip install tokenspy[openai]      # + openai SDK
+pip install tokenspy[anthropic]   # + anthropic SDK
+pip install tokenspy[langchain]   # + langchain-core
+pip install tokenspy[otel]        # + OpenTelemetry export
+pip install tokenspy[server]      # + web dashboard (fastapi + uvicorn)
+pip install tokenspy[all]         # openai + anthropic + langchain
+```
+
+---
+
 ## Built-in Pricing Table
 
-30+ models, updated Feb 2026. No API call needed.
+30+ models, updated March 2026. No network calls.
 
 | Model | Input $/1M | Output $/1M |
 |---|---|---|
@@ -310,50 +645,7 @@ Automatically detected — nothing to configure:
 | gemini-1.5-pro | $1.25 | $5.00 |
 | gemini-1.5-flash | $0.075 | $0.30 |
 
-[→ Full pricing table](tokenspy/pricing.py)
-
----
-
-## API Reference
-
-| Symbol | Description |
-|---|---|
-| `@tokenspy.profile` | Decorator — profile all LLM calls inside the function |
-| `@tokenspy.profile(budget_usd=0.10)` | Decorator with cost budget alert |
-| `@tokenspy.profile(budget_usd=0.10, on_exceeded="raise")` | Raise `BudgetExceededError` if exceeded |
-| `tokenspy.session(name)` | Context manager — profile calls in a `with` block |
-| `tokenspy.report()` | Print text flame graph to terminal |
-| `tokenspy.report(format="html")` | Write + open HTML flame graph in browser |
-| `tokenspy.stats()` | Return full breakdown as a dict |
-| `tokenspy.reset()` | Clear all recorded calls |
-| `tokenspy.init(persist=True)` | Enable SQLite persistence across sessions |
-| `tokenspy.init(track_git=True)` | Tag each call with current git commit SHA |
-| `TokenspyCallbackHandler` | LangChain/LangGraph callback handler |
-| `tokenspy history` | CLI: show recent call history |
-| `tokenspy report` | CLI: render cost report |
-| `tokenspy compare` | CLI: diff two DBs or two git commits |
-| `tokenspy annotate` | CLI: emit GitHub Actions cost annotations |
-
----
-
-## Comparison
-
-| | Langfuse | Helicone | LiteLLM Proxy | **tokenspy** |
-|---|---|---|---|---|
-| Requires proxy / gateway | ✅ yes | ✅ yes | ✅ yes | **❌ no** |
-| Requires signup | ✅ yes | ✅ yes | ❌ no | **❌ no** |
-| Local-first | ❌ no | ❌ no | ⚡ partial | **✅ yes** |
-| Zero dependencies | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| Flame graph output | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| `@decorator` API | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| Streaming support | ✅ yes | ✅ yes | ✅ yes | **✅ yes** |
-| Budget alerts | ⚡ partial | ⚡ partial | ❌ no | **✅ yes** |
-| LangChain integration | ✅ yes | ✅ yes | ✅ yes | **✅ yes** |
-| CLI history/report | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| GitHub Actions cost diff | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| Git commit cost tracking | ❌ no | ❌ no | ❌ no | **✅ yes** |
-| Optimization hints | ❌ no | ⚡ partial | ❌ no | **✅ yes** |
-| Works offline | ❌ no | ❌ no | ⚡ partial | **✅ yes** |
+[→ Full table](tokenspy/pricing.py)
 
 ---
 
@@ -363,7 +655,7 @@ Automatically detected — nothing to configure:
 git clone https://github.com/pinakimishra95/tokenspy
 cd tokenspy
 pip install -e ".[dev]"
-pytest tests/    # 100 tests, ~0.2s
+pytest tests/    # 139 tests, ~0.3s
 ```
 
 Issues and PRs welcome — especially for new provider support and updated pricing.
@@ -378,8 +670,8 @@ MIT © [Pinaki Mishra](https://github.com/pinakimishra95). See [LICENSE](LICENSE
 
 <div align="center">
 
-**Star this repo if you're tired of mystery LLM invoices.** ⭐
+**Everything Langfuse and Braintrust do. Zero cloud. Zero signup. Zero cost.**
 
-[GitHub](https://github.com/pinakimishra95/tokenspy) · [PyPI](https://pypi.org/project/tokenspy/) · [Issues](https://github.com/pinakimishra95/tokenspy/issues)
+[GitHub](https://github.com/pinakimishra95/tokenspy) · [PyPI](https://pypi.org/project/tokenspy/) · [Docs](https://pinakimishra95.github.io/tokenspy) · [Issues](https://github.com/pinakimishra95/tokenspy/issues)
 
 </div>

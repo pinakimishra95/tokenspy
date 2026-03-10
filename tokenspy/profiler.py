@@ -186,6 +186,8 @@ def init(
     persist: bool = False,
     persist_dir: str | None = None,
     track_git: bool = False,
+    otel_endpoint: str | None = None,
+    otel_service_name: str = "tokenspy",
 ) -> None:
     """Configure tokenspy global state.
 
@@ -193,6 +195,9 @@ def init(
         persist: If True, all calls are persisted to a local SQLite database.
         persist_dir: Directory for the SQLite file. Defaults to ~/.tokenspy/.
         track_git: If True, tag each call with the current git commit SHA.
+        otel_endpoint: OTLP gRPC endpoint for OpenTelemetry export
+            (e.g. ``"http://localhost:4317"``).  Requires the ``otel`` extra.
+        otel_service_name: Service name reported to the OTEL collector.
     """
     if persist:
         db_dir = Path(persist_dir) if persist_dir else Path.home() / ".tokenspy"
@@ -215,3 +220,15 @@ def init(
 
     set_global_tracker(tracker)
     _interceptor.activate(tracker)
+
+    if otel_endpoint:
+        try:
+            from tokenspy.otel import configure_otel
+            configure_otel(otel_endpoint, otel_service_name)
+        except ImportError:
+            import warnings
+            warnings.warn(
+                "[tokenspy] otel_endpoint set but opentelemetry-sdk is not installed. "
+                "Run: pip install tokenspy[otel]",
+                stacklevel=2,
+            )

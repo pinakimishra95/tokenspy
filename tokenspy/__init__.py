@@ -31,7 +31,7 @@ Usage::
 
 from __future__ import annotations
 
-__version__ = "0.1.3"
+__version__ = "0.2.0"
 __all__ = [
     "profile",
     "session",
@@ -41,6 +41,12 @@ __all__ = [
     "init",
     "Session",
     "BudgetExceededError",
+    # v0.2.0
+    "trace",
+    "span",
+    "dataset",
+    "experiment",
+    "prompts",
 ]
 
 from pathlib import Path
@@ -48,6 +54,51 @@ from typing import Any
 
 from tokenspy.profiler import BudgetExceededError, Session, init, profile, session
 from tokenspy.tracker import get_global_tracker
+from tokenspy.tracing import span, trace
+
+
+def dataset(name: str, description: str = ""):
+    """Get or create a dataset by name.
+
+    Args:
+        name: Unique dataset name.
+        description: Optional human-readable description.
+
+    Returns:
+        :class:`tokenspy.eval.dataset.Dataset`
+    """
+    from tokenspy.eval.dataset import Dataset
+    return Dataset(name=name, description=description)
+
+
+def experiment(name: str, *, dataset: str, fn, scorers=None, **kwargs):
+    """Create an experiment that runs *fn* over a dataset and scores results.
+
+    Args:
+        name: Experiment label.
+        dataset: Name of the dataset to run against.
+        fn: Callable that takes a dataset item's ``input`` dict and returns output.
+        scorers: List of scorer callables.  Defaults to ``[exact_match]``.
+
+    Returns:
+        :class:`tokenspy.eval.experiment.Experiment`
+    """
+    from tokenspy.eval.dataset import Dataset
+    from tokenspy.eval.experiment import Experiment
+    from tokenspy.eval import scorers as _default_scorers
+
+    ds = Dataset(name=dataset)
+    return Experiment(
+        name=name,
+        dataset=ds,
+        fn=fn,
+        scorers=scorers or [_default_scorers.exact_match],
+        **kwargs,
+    )
+
+
+# Prompt registry singleton — accessible as tokenspy.prompts
+from tokenspy.prompts import prompts  # noqa: E402
 
 
 def report(format: str = "text", output: str | None = None) -> None:
