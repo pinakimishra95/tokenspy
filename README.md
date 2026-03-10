@@ -388,46 +388,23 @@ tokenspy serve --port 8080 --db /path/to/custom.db
 pip install tokenspy[server]
 ```
 
+### Overview tab — cost/day chart · model breakdown · top functions · live WebSocket counter
+
+![tokenspy dashboard overview](docs/assets/dashboard-overview.png)
+
+### Traces tab — full span tree with inputs, outputs, latency, and quality scores
+
+![tokenspy traces view](docs/assets/dashboard-traces.png)
+
 The dashboard has 5 tabs:
 
-**Overview** — cost/day bar chart, top functions by cost, model breakdown donut, live call counter (WebSocket push)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  tokenspy dashboard                    live  ● 3 calls/min  │
-├──────────────┬──────────────────────────────────────────────┤
-│  Overview    │  Cost per day (last 7 days)                   │
-│  Traces      │  ████ ██ ███ █████ ██ ████ ███               │
-│  Evals       │                                               │
-│  Prompts     │  Top functions        Cost      % of total    │
-│  Settings    │  fetch_and_summarize  $0.038    73%  ████████ │
-│              │  generate_report      $0.011    21%  ████     │
-│              │  extract_entities     $0.003     6%  █        │
-└──────────────┴──────────────────────────────────────────────┘
-```
-
-**Traces** — browse every trace, click to expand the full span tree with inputs/outputs/scores
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Traces                               Filter: all           │
-├─────────────────────────────────────────────────────────────┤
-│  ▼ research_pipeline   842ms  $0.052  2026-03-10 14:23      │
-│    ├─ retrieve_docs    12ms   $0.000  retrieval             │
-│    ├─ summarize        810ms  $0.0144 llm · gpt-4o          │
-│    └─ rank_results     8ms    $0.000  function              │
-│    scores: relevance=0.92  hallucination=0.05               │
-│                                                             │
-│  ▶ data_extraction     340ms  $0.021  2026-03-10 14:19      │
-│  ▶ report_generation   190ms  $0.009  2026-03-10 14:15      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Evaluations** — run history, pass rates, score distributions per experiment
-
-**Prompts** — version history table, production flag, preview content
-
-**Settings** — DB path, OTEL status, version info
+| Tab | What you see |
+|---|---|
+| **Overview** | Cost/day bar chart, model donut, top functions table, live call counter |
+| **Traces** | Every trace with expandable span tree — inputs, outputs, tokens, scores |
+| **Evaluations** | Experiment run history, pass rates, score distributions |
+| **Prompts** | Version history, production flag, content preview |
+| **Settings** | DB path, OTEL endpoint status, version info |
 
 ---
 
