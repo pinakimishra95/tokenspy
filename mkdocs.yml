@@ -48,9 +48,15 @@ nav:
     - Budget Alerts: usage/budget-alerts.md
     - Persistence: usage/persistence.md
     - Programmatic Access: usage/programmatic.md
+  - v0.2.0 Observability:
+    - Structured Tracing: tracing.md
+    - Evaluations & Datasets: evals.md
+    - Prompt Versioning: prompts.md
+    - Web Dashboard: dashboard.md
+    - OpenTelemetry Export: otel.md
   - Integrations:
     - LangChain / LangGraph: integrations/langchain.md
-    - GitHub Actions: integrations/github-actions.md
+    - GitHub Actions CI: ci.md
   - CLI Reference: cli.md
   - API Reference: api-reference.md
   - How It Works: how-it-works.md
