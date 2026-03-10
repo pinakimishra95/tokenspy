@@ -53,8 +53,8 @@ from pathlib import Path
 from typing import Any
 
 from tokenspy.profiler import BudgetExceededError, Session, init, profile, session
-from tokenspy.tracker import get_global_tracker
 from tokenspy.tracing import span, trace
+from tokenspy.tracker import get_global_tracker
 
 
 def dataset(name: str, description: str = ""):
@@ -83,9 +83,9 @@ def experiment(name: str, *, dataset: str, fn, scorers=None, **kwargs):
     Returns:
         :class:`tokenspy.eval.experiment.Experiment`
     """
+    from tokenspy.eval import scorers as _default_scorers
     from tokenspy.eval.dataset import Dataset
     from tokenspy.eval.experiment import Experiment
-    from tokenspy.eval import scorers as _default_scorers
 
     ds = Dataset(name=dataset)
     return Experiment(

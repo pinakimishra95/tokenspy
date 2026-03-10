@@ -1,8 +1,6 @@
 """Tests for tokenspy.eval.scorers."""
 from __future__ import annotations
 
-import pytest
-
 from tokenspy.eval.scorers import (
     contains,
     exact_match,

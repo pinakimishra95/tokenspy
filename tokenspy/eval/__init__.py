@@ -26,8 +26,8 @@ Usage::
     results.compare("gpt4o-v1")   # regression check vs previous run
 """
 
+from tokenspy.eval import scorers
 from tokenspy.eval.dataset import Dataset, DatasetItem
 from tokenspy.eval.experiment import Experiment, ExperimentResults
-from tokenspy.eval import scorers
 
 __all__ = ["Dataset", "DatasetItem", "Experiment", "ExperimentResults", "scorers"]

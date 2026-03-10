@@ -25,9 +25,10 @@ import json
 import sqlite3
 import time
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 # ── Context variables ──────────────────────────────────────────────────────────
 # These propagate through async and threaded code automatically.
@@ -107,7 +108,7 @@ class Span:
         if metadata:
             self._metadata.update(metadata)
 
-    def __enter__(self) -> "Span":
+    def __enter__(self) -> Span:
         # Inherit trace_id from context if not set
         if self.trace_id is None:
             self.trace_id = _current_trace_id.get()
@@ -193,7 +194,7 @@ class Trace:
             scorer=scorer,
         )
 
-    def __enter__(self) -> "Trace":
+    def __enter__(self) -> Trace:
         self._trace_token = _current_trace_id.set(self.id)
         return self
 

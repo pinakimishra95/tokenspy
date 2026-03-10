@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from tokenspy.prompts import Prompt, PromptRegistry
+from tokenspy.prompts import PromptRegistry
 
 
 @pytest.fixture()

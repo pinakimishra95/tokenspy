@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from tokenspy.eval.dataset import Dataset, DatasetItem
+from tokenspy.eval.dataset import Dataset
 
 
 @pytest.fixture()

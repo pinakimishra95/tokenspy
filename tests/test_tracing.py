@@ -6,17 +6,13 @@ from pathlib import Path
 
 import pytest
 
-import tokenspy
 from tokenspy.tracing import (
-    Span,
-    Trace,
     get_current_span_id,
     get_current_trace_id,
     span,
     trace,
     update_span_llm_data,
 )
-
 
 # ── Unit tests (no DB) ─────────────────────────────────────────────────────────
 

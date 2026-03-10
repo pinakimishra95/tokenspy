@@ -17,7 +17,6 @@ Requires: pip install tokenspy[server]
 from __future__ import annotations
 
 import webbrowser
-from pathlib import Path
 
 
 def serve(

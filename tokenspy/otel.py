@@ -54,7 +54,7 @@ def configure_otel(endpoint: str, service_name: str = "tokenspy") -> None:
     otel_trace.set_tracer_provider(provider)
     tracer = otel_trace.get_tracer("tokenspy", schema_url="https://opentelemetry.io/schemas/1.11.0")
 
-    def _otel_hook(rec: "CallRecord") -> None:
+    def _otel_hook(rec: CallRecord) -> None:
         # Use OpenLLMetry semantic conventions for LLM spans
         span_name = f"llm.{rec.provider}.chat"
         with tracer.start_as_current_span(span_name) as otel_span:

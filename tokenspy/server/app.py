@@ -12,7 +12,7 @@ from typing import Any
 
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-    from fastapi.responses import HTMLResponse, JSONResponse
+    from fastapi.responses import HTMLResponse
     from fastapi.staticfiles import StaticFiles
     _FASTAPI_AVAILABLE = True
 except ImportError:
@@ -58,8 +58,8 @@ def create_app(db_path: str | None = None) -> Any:
     manager = ConnectionManager()
 
     # Register a hook to push real-time updates
+
     from tokenspy.tracker import get_global_tracker
-    import asyncio
 
     def _rt_hook(rec: Any) -> None:
         import asyncio as _asyncio

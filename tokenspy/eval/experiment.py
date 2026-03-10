@@ -8,8 +8,9 @@ import json
 import sqlite3
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from tokenspy.eval.dataset import Dataset, DatasetItem, _get_db_path
 
@@ -29,7 +30,7 @@ class ExperimentResult:
 class ExperimentResults:
     """Aggregated results from an experiment run."""
 
-    def __init__(self, experiment: "Experiment", results: list[ExperimentResult]) -> None:
+    def __init__(self, experiment: Experiment, results: list[ExperimentResult]) -> None:
         self._experiment = experiment
         self._results = results
 

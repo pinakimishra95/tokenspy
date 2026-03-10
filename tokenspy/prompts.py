@@ -264,7 +264,7 @@ class PromptRegistry:
         # Load LLM calls and look for the prompt name in function names
         from tokenspy.tracker import get_global_tracker
         t = get_global_tracker()
-        records = t.load_from_db() if t.db_path else t.records()
+        t.load_from_db() if t.db_path else t.records()
 
         p1 = self.pull(name, version=v1)
         p2 = self.pull(name, version=v2)

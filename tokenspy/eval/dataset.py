@@ -149,7 +149,7 @@ class Dataset:
                 continue
         return result
 
-    def from_json(self, path: str) -> "Dataset":
+    def from_json(self, path: str) -> Dataset:
         """Import items from a JSON file.
 
         Expected format: a list of objects with "input" and optionally
@@ -170,7 +170,7 @@ class Dataset:
             )
         return self
 
-    def from_csv(self, path: str, input_col: str, expected_col: str | None = None) -> "Dataset":
+    def from_csv(self, path: str, input_col: str, expected_col: str | None = None) -> Dataset:
         """Import items from a CSV file."""
         with open(path) as f:
             reader = csv.DictReader(f)
